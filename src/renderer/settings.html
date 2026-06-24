@@ -1,0 +1,349 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Murmur Settings</title>
+    <style>
+      :root {
+        --bg: #f2f2f7;
+        --card: #ffffff;
+        --text: #1c1c1e;
+        --muted: #8e8e93;
+        --line: #e0e0e5;
+        --accent: #0a84ff;
+        --ok: #30d158;
+        --warn: #ff9f0a;
+        --bad: #ff453a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1c1c1e;
+          --card: #2c2c2e;
+          --text: #f2f2f7;
+          --muted: #98989f;
+          --line: #3a3a3c;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+        font-size: 13px;
+        -webkit-user-select: none;
+      }
+      .wrap {
+        padding: 18px 20px 24px;
+      }
+      h1 {
+        font-size: 17px;
+        margin: 0 0 2px;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0 0 18px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+      }
+      .card h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 0;
+      }
+      .row + .row {
+        border-top: 1px solid var(--line);
+      }
+      .label {
+        font-weight: 500;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      button {
+        font: inherit;
+        color: var(--accent);
+        background: transparent;
+        border: 1px solid var(--accent);
+        border-radius: 7px;
+        padding: 5px 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+      }
+      button.recording {
+        color: var(--warn);
+        border-color: var(--warn);
+        animation: blink 1s steps(2, start) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.5;
+        }
+      }
+      .kbd {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 14px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px 10px;
+        min-width: 96px;
+        text-align: center;
+      }
+      select {
+        font: inherit;
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 5px 8px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .dot.ok {
+        background: var(--ok);
+      }
+      .dot.bad {
+        background: var(--bad);
+      }
+      .dot.warn {
+        background: var(--warn);
+      }
+      .err {
+        color: var(--bad);
+        font-size: 12px;
+        min-height: 16px;
+        margin-top: 6px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Murmur Settings</h1>
+      <p class="sub">Offline voice dictation — everything stays on this Mac.</p>
+
+      <!-- Hotkey -->
+      <div class="card">
+        <h2>Dictation shortcut</h2>
+        <div class="row">
+          <div>
+            <div class="label">Global hotkey</div>
+            <div class="hint">Press it once to start, again to transcribe &amp; paste.</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span class="kbd" id="hotkeyDisplay">—</span>
+            <button id="hotkeyBtn">Change</button>
+          </div>
+        </div>
+        <div class="err" id="hotkeyErr"></div>
+      </div>
+
+      <!-- Model -->
+      <div class="card">
+        <h2>Transcription model</h2>
+        <div class="row">
+          <div>
+            <div class="label">Whisper model</div>
+            <div class="hint">Larger models are more accurate but slower.</div>
+          </div>
+          <select id="modelSelect"></select>
+        </div>
+      </div>
+
+      <!-- Permissions -->
+      <div class="card">
+        <h2>Permissions</h2>
+        <div class="row">
+          <div>
+            <div class="label">Microphone</div>
+            <div class="hint">Required to capture your voice.</div>
+          </div>
+          <div class="actions">
+            <span class="badge"><span class="dot" id="micDot"></span><span id="micText">…</span></span>
+            <button id="micBtn">Request</button>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="label">Accessibility</div>
+            <div class="hint">Required to paste with ⌘V into the active app.</div>
+          </div>
+          <div class="actions">
+            <span class="badge"><span class="dot" id="axDot"></span><span id="axText">…</span></span>
+            <button id="axBtn">Open Settings</button>
+          </div>
+        </div>
+        <div class="row" style="justify-content: flex-end; border-top: none">
+          <button id="refreshBtn">Refresh status</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const api = window.murmur.settings;
+
+      // --- pretty-print an Electron accelerator with mac glyphs ---
+      function pretty(acc) {
+        if (!acc) return '—';
+        return acc
+          .replaceAll('CommandOrControl', '⌘')
+          .replaceAll('Command', '⌘')
+          .replaceAll('Control', '⌃')
+          .replaceAll('Alt', '⌥')
+          .replaceAll('Shift', '⇧')
+          .split('+')
+          .join(' ');
+      }
+
+      // --- map a KeyboardEvent to an Electron accelerator key name ---
+      function keyName(e) {
+        const c = e.code;
+        if (c === 'Space') return 'Space';
+        if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+        if (/^Digit[0-9]$/.test(c)) return c.slice(5);
+        if (/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) return c;
+        const map = {
+          ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+          Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+          Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
+          Backslash: '\\', Backquote: '`', Enter: 'Return', Tab: 'Tab',
+        };
+        return map[c] || null; // null ⇒ a modifier key alone; keep waiting
+      }
+
+      function toAccelerator(e) {
+        const mods = [];
+        if (e.ctrlKey) mods.push('Control');
+        if (e.altKey) mods.push('Alt');
+        if (e.shiftKey) mods.push('Shift');
+        if (e.metaKey) mods.push('Command');
+        const key = keyName(e);
+        if (!key) return null;
+        return [...mods, key].join('+');
+      }
+
+      // --- render current state ---
+      function renderPermissions(p) {
+        const mic = p.microphone; // string status
+        const micOk = mic === 'granted';
+        $('micDot').className = 'dot ' + (micOk ? 'ok' : mic === 'denied' ? 'bad' : 'warn');
+        $('micText').textContent = micOk ? 'Granted' : mic === 'denied' ? 'Denied' : 'Not set';
+        $('micBtn').style.display = micOk ? 'none' : '';
+
+        const ax = p.accessibility; // boolean
+        $('axDot').className = 'dot ' + (ax ? 'ok' : 'bad');
+        $('axText').textContent = ax ? 'Granted' : 'Not granted';
+        $('axBtn').style.display = ax ? 'none' : '';
+      }
+
+      function render(state) {
+        $('hotkeyDisplay').textContent = pretty(state.hotkey);
+        const sel = $('modelSelect');
+        sel.innerHTML = '';
+        for (const m of state.models) {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m.replace(/^ggml-|\.bin$/g, ''); // e.g. "base.en"
+          if (m === state.model) opt.selected = true;
+          sel.appendChild(opt);
+        }
+        if (state.models.length === 0) {
+          const opt = document.createElement('option');
+          opt.textContent = 'No models found — run npm run setup';
+          sel.appendChild(opt);
+          sel.disabled = true;
+        }
+        renderPermissions(state.permissions);
+      }
+
+      // --- hotkey capture ---
+      let capturing = false;
+      $('hotkeyBtn').addEventListener('click', () => {
+        capturing = !capturing;
+        $('hotkeyBtn').textContent = capturing ? 'Press keys…' : 'Change';
+        $('hotkeyBtn').classList.toggle('recording', capturing);
+        $('hotkeyErr').textContent = capturing ? 'Hold modifiers and press a key. Esc to cancel.' : '';
+      });
+
+      window.addEventListener('keydown', async (e) => {
+        if (!capturing) return;
+        e.preventDefault();
+        if (e.code === 'Escape') {
+          capturing = false;
+          $('hotkeyBtn').textContent = 'Change';
+          $('hotkeyBtn').classList.remove('recording');
+          $('hotkeyErr').textContent = '';
+          return;
+        }
+        const acc = toAccelerator(e);
+        if (!acc) return; // modifier-only so far
+        capturing = false;
+        $('hotkeyBtn').textContent = 'Change';
+        $('hotkeyBtn').classList.remove('recording');
+
+        const res = await api.set({ hotkey: acc });
+        if (!res.ok) {
+          $('hotkeyErr').textContent = res.error || 'Could not set that shortcut.';
+        } else {
+          $('hotkeyErr').textContent = '';
+        }
+        render(res);
+      });
+
+      // --- model change ---
+      $('modelSelect').addEventListener('change', async (e) => {
+        const res = await api.set({ model: e.target.value });
+        render(res);
+      });
+
+      // --- permissions ---
+      $('micBtn').addEventListener('click', async () => {
+        await api.requestMic();
+        renderPermissions(await api.permissions());
+      });
+      $('axBtn').addEventListener('click', () => api.openPrivacy('accessibility'));
+      $('refreshBtn').addEventListener('click', async () => {
+        renderPermissions(await api.permissions());
+      });
+
+      // initial load
+      api.get().then(render);
+    </script>
+  </body>
+</html>

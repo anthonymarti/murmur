@@ -15,24 +15,30 @@ const {
   clipboard,
   nativeImage,
   shell,
+  systemPreferences,
 } = require('electron');
 const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const config = require('./config');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const MODELS_DIR = path.join(ROOT, 'vendor', 'whisper.cpp', 'models');
 
 // Recent whisper.cpp renamed `main` → `whisper-cli`. If your build produces a
 // different name, fix this path rather than assuming.
 const WHISPER_CLI = path.join(ROOT, 'vendor', 'whisper.cpp', 'build', 'bin', 'whisper-cli');
-const MODEL = path.join(ROOT, 'vendor', 'whisper.cpp', 'models', 'ggml-base.en.bin');
 
-const HOTKEY = 'Control+Alt+Space'; // Ctrl+Option+Space on a Mac keyboard.
+// The active model is configurable; resolve it from settings each time.
+function modelPath() {
+  return path.join(MODELS_DIR, config.load().model);
+}
 
 let tray = null;
 let recorderWin = null; // hidden; owns getUserMedia
 let panelWin = null; // floating HUD
+let settingsWin = null; // visible settings window (created on demand)
 let isRecording = false;
 let busy = false; // true while transcribing/pasting — ignore hotkey re-entry
 
@@ -128,7 +134,7 @@ function toggleDictation() {
 
 // Verify the local toolchain exists before we bother recording.
 function preflight() {
-  if (!fs.existsSync(WHISPER_CLI) || !fs.existsSync(MODEL)) {
+  if (!fs.existsSync(WHISPER_CLI) || !fs.existsSync(modelPath())) {
     showPanel('error', 'Run `npm run setup` first');
     hidePanel(2600);
     return false;
@@ -176,7 +182,7 @@ ipcMain.on('recorder:wav', async (_evt, arrayBuffer) => {
 function transcribe(wavPath) {
   return new Promise((resolve, reject) => {
     // -nt  no timestamps   -np  no progress prints   -otxt off (we read stdout)
-    const args = ['-m', MODEL, '-f', wavPath, '-nt', '-np'];
+    const args = ['-m', modelPath(), '-f', wavPath, '-nt', '-np'];
     execFile(WHISPER_CLI, args, { maxBuffer: 1024 * 1024 * 16 }, (err, stdout, stderr) => {
       if (err) {
         return reject(new Error(`whisper failed: ${stderr.trim() || err.message}`));
@@ -298,7 +304,8 @@ function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: 'Murmur — offline dictation', enabled: false },
     { type: 'separator' },
-    { label: `Dictate (${HOTKEY})`, click: toggleDictation },
+    { label: `Dictate (${config.load().hotkey})`, click: toggleDictation },
+    { label: 'Settings…', click: openSettings },
     {
       label: 'Open whisper folder',
       click: () => shell.openPath(path.join(ROOT, 'vendor', 'whisper.cpp')),
@@ -312,6 +319,115 @@ function updateTrayTitle() {
   if (!tray) return;
   tray.setTitle(isRecording ? ' ●' : ''); // red-dot-ish hint while recording
 }
+
+// Register the configured global hotkey, replacing any prior binding. Returns
+// true on success; a false result means the accelerator was invalid or already
+// claimed by another app.
+function registerHotkey() {
+  globalShortcut.unregisterAll();
+  const ok = globalShortcut.register(config.load().hotkey, toggleDictation);
+  if (tray) tray.setTitle(ok ? '' : ' ⚠︎'); // warn in the menu bar if it failed
+  return ok;
+}
+
+// ---------------------------------------------------------------------------
+// Settings window
+// ---------------------------------------------------------------------------
+
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.show();
+    settingsWin.focus();
+    return;
+  }
+  settingsWin = new BrowserWindow({
+    width: 460,
+    height: 540,
+    resizable: false,
+    title: 'Murmur Settings',
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  settingsWin.loadFile(path.join(ROOT, 'src', 'renderer', 'settings.html'));
+  settingsWin.once('ready-to-show', () => settingsWin.show());
+  settingsWin.on('closed', () => {
+    settingsWin = null;
+  });
+}
+
+// Models present on disk — drives the settings model picker.
+function listModels() {
+  try {
+    return fs
+      .readdirSync(MODELS_DIR)
+      .filter((f) => f.endsWith('.bin'))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+// Live macOS permission status for the two things the core loop needs.
+function permissionStatus() {
+  return {
+    // 'granted' | 'denied' | 'restricted' | 'not-determined'
+    microphone: systemPreferences.getMediaAccessStatus('microphone'),
+    accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+  };
+}
+
+function snapshot() {
+  const s = config.load();
+  return {
+    hotkey: s.hotkey,
+    model: s.model,
+    models: listModels(),
+    permissions: permissionStatus(),
+  };
+}
+
+// --- Settings IPC (invoke/handle: request → response) ---
+
+ipcMain.handle('settings:get', () => snapshot());
+
+ipcMain.handle('settings:set', (_e, patch) => {
+  // A hotkey change must actually bind before we keep it — otherwise the user
+  // could lock themselves out with an invalid or taken accelerator.
+  if (patch.hotkey && patch.hotkey !== config.load().hotkey) {
+    const prev = config.load().hotkey;
+    config.save({ hotkey: patch.hotkey });
+    if (!registerHotkey()) {
+      config.save({ hotkey: prev }); // revert
+      registerHotkey();
+      tray.setContextMenu(buildTrayMenu());
+      return { ok: false, error: 'That shortcut is invalid or already in use.', ...snapshot() };
+    }
+  }
+  if (patch.model) config.save({ model: patch.model });
+  tray.setContextMenu(buildTrayMenu()); // reflect new hotkey label
+  return { ok: true, ...snapshot() };
+});
+
+ipcMain.handle('settings:requestMic', async () => {
+  // Triggers the macOS mic prompt if still undecided; no-op if already set.
+  await systemPreferences.askForMediaAccess('microphone');
+  return permissionStatus();
+});
+
+ipcMain.handle('settings:openPrivacy', (_e, which) => {
+  const pane =
+    which === 'accessibility'
+      ? 'com.apple.preference.security?Privacy_Accessibility'
+      : 'com.apple.preference.security?Privacy_Microphone';
+  shell.openExternal(`x-apple.systempreferences:${pane}`);
+  return true;
+});
+
+ipcMain.handle('settings:permissions', () => permissionStatus());
 
 // ---------------------------------------------------------------------------
 // App lifecycle
@@ -327,11 +443,7 @@ app.whenReady().then(() => {
   tray.setToolTip('Murmur — offline dictation');
   tray.setContextMenu(buildTrayMenu());
 
-  const ok = globalShortcut.register(HOTKEY, toggleDictation);
-  if (!ok) {
-    // Don't die silently — make the failure visible.
-    tray.setTitle(' ⚠︎');
-  }
+  registerHotkey();
 });
 
 // Stay resident when the (hidden) windows "close".

@@ -14,4 +14,13 @@ contextBridge.exposeInMainWorld('murmur', {
 
   // --- panel.html ---
   onState: (cb) => ipcRenderer.on('panel:state', (_e, payload) => cb(payload)),
+
+  // --- settings.html (request/response) ---
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (patch) => ipcRenderer.invoke('settings:set', patch),
+    requestMic: () => ipcRenderer.invoke('settings:requestMic'),
+    openPrivacy: (which) => ipcRenderer.invoke('settings:openPrivacy', which),
+    permissions: () => ipcRenderer.invoke('settings:permissions'),
+  },
 });
