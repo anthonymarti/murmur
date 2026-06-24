@@ -150,6 +150,39 @@
         display: flex;
         gap: 8px;
       }
+      .dictrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .dinput {
+        font: inherit;
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 5px 9px;
+        flex: 1;
+        min-width: 0;
+      }
+      .arrow {
+        color: var(--muted);
+      }
+      .del {
+        color: var(--bad);
+        border-color: transparent;
+        padding: 4px 9px;
+      }
+      .del:hover {
+        background: color-mix(in srgb, var(--bad) 14%, transparent);
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 12px;
+        font-style: italic;
+        padding: 2px 0 4px;
+      }
     </style>
   </head>
   <body>
@@ -182,6 +215,22 @@
             <div class="hint">Larger models are more accurate but slower.</div>
           </div>
           <select id="modelSelect"></select>
+        </div>
+      </div>
+
+      <!-- Custom dictionary -->
+      <div class="card">
+        <h2>Custom dictionary</h2>
+        <div class="hint" style="margin-bottom: 10px">
+          Fix names &amp; jargon whisper mishears. Heard text on the left, what to
+          write on the right.
+        </div>
+        <div id="dictList"></div>
+        <div class="dictrow" style="margin-top: 8px">
+          <input id="dictFrom" class="dinput" placeholder="heard (e.g. never day)" />
+          <span class="arrow">→</span>
+          <input id="dictTo" class="dinput" placeholder="written (e.g. Neverday)" />
+          <button id="dictAdd">Add</button>
         </div>
       </div>
 
@@ -272,8 +321,65 @@
         $('axBtn').style.display = ax ? 'none' : '';
       }
 
+      // --- custom dictionary ---
+      let dictionary = [];
+
+      function renderDictionary() {
+        const list = $('dictList');
+        list.innerHTML = '';
+        if (dictionary.length === 0) {
+          const e = document.createElement('div');
+          e.className = 'empty';
+          e.textContent = 'No entries yet.';
+          list.appendChild(e);
+          return;
+        }
+        dictionary.forEach((entry, i) => {
+          const row = document.createElement('div');
+          row.className = 'dictrow';
+          const from = document.createElement('span');
+          from.className = 'kbd';
+          from.style.flex = '1';
+          from.style.minWidth = '0';
+          from.textContent = entry.from;
+          const arrow = document.createElement('span');
+          arrow.className = 'arrow';
+          arrow.textContent = '→';
+          const to = document.createElement('span');
+          to.className = 'kbd';
+          to.style.flex = '1';
+          to.style.minWidth = '0';
+          to.textContent = entry.to;
+          const del = document.createElement('button');
+          del.className = 'del';
+          del.textContent = 'Remove';
+          del.addEventListener('click', () => saveDictionary(dictionary.filter((_, j) => j !== i)));
+          row.append(from, arrow, to, del);
+          list.appendChild(row);
+        });
+      }
+
+      async function saveDictionary(next) {
+        const res = await api.set({ dictionary: next });
+        render(res);
+      }
+
+      $('dictAdd').addEventListener('click', () => {
+        const from = $('dictFrom').value.trim();
+        const to = $('dictTo').value.trim();
+        if (!from || !to) return;
+        $('dictFrom').value = '';
+        $('dictTo').value = '';
+        saveDictionary([...dictionary, { from, to }]);
+      });
+      $('dictTo').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') $('dictAdd').click();
+      });
+
       function render(state) {
         $('hotkeyDisplay').textContent = pretty(state.hotkey);
+        dictionary = state.dictionary || [];
+        renderDictionary();
         const sel = $('modelSelect');
         sel.innerHTML = '';
         for (const m of state.models) {

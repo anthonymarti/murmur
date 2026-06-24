@@ -218,12 +218,35 @@ function cleanup(raw) {
   t = t.replace(/\s+([,.!?;:])/g, '$1'); // no space before punctuation
   t = t.replace(/([,.!?;:])(?=[^\s])/g, '$1 '); // ensure space after punctuation
 
+  // Apply the user's custom dictionary (names/jargon whisper mishears).
+  t = applyDictionary(t);
+
   if (!t) return '';
 
   // Capitalize the first letter and ensure terminal punctuation.
   t = t.charAt(0).toUpperCase() + t.slice(1);
   if (!/[.!?]$/.test(t)) t += '.';
 
+  return t;
+}
+
+// Replace each spoken form with its written form, case-insensitively and on
+// whole-word boundaries. The replacement is verbatim (so "Neverday" keeps its
+// capitalization), and a bad/empty entry is skipped rather than throwing.
+function applyDictionary(text) {
+  const dict = config.load().dictionary || [];
+  let t = text;
+  for (const entry of dict) {
+    const from = (entry.from || '').trim();
+    if (!from) continue;
+    const to = entry.to || '';
+    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      t = t.replace(new RegExp(`\\b${esc}\\b`, 'gi'), () => to);
+    } catch {
+      /* skip malformed entry */
+    }
+  }
   return t;
 }
 
@@ -386,6 +409,7 @@ function snapshot() {
     hotkey: s.hotkey,
     model: s.model,
     models: listModels(),
+    dictionary: s.dictionary || [],
     permissions: permissionStatus(),
   };
 }
@@ -408,6 +432,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
     }
   }
   if (patch.model) config.save({ model: patch.model });
+  if (Array.isArray(patch.dictionary)) config.save({ dictionary: patch.dictionary });
   tray.setContextMenu(buildTrayMenu()); // reflect new hotkey label
   return { ok: true, ...snapshot() };
 });

@@ -11,6 +11,7 @@ const path = require('path');
 const DEFAULTS = {
   hotkey: 'Control+Alt+Space', // Ctrl+Option+Space
   model: 'ggml-base.en.bin', // filename inside vendor/whisper.cpp/models
+  dictionary: [], // [{ from, to }] spoken→written substitutions for names/jargon
 };
 
 let cached = null;
