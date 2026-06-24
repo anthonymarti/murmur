@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/* Murmur marketing — dark, Apple-inspired palette mirroring the desktop HUD. */
+@theme {
+  --color-bg: #08080a;
+  --color-surface: #121216;
+  --color-surface-2: #17171c;
+  --color-border: #26262e;
+  --color-fg: #f2f2f5;
+  --color-muted: #9a9aa3;
+  --color-accent: #0a84ff;
+  --color-ok: #30d158;
+  --color-warn: #ff9f0a;
+  --color-danger: #ff453a;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--color-bg);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle dotted backdrop used behind the hero. */
+.grid-backdrop {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+}
+
+.glow {
+  background: radial-gradient(ellipse 50% 50% at 50% 0%, rgba(10, 132, 255, 0.16), transparent 70%);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+.pulse-dot {
+  animation: pulse-dot 1.1s ease-in-out infinite;
+}
