@@ -1,0 +1,9 @@
+node_modules/
+
+# Native, platform-specific — must be built locally via `npm run setup`.
+vendor/
+
+# Build artifacts
+dist/
+*.log
+.DS_Store
