@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Murmur</title>
+    <style>
+      /* Floating HUD. Transparent window; only the pill is visible. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+        -webkit-user-select: none;
+        font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+      }
+      .pill {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 44px;
+        margin: 14px 12px;
+        padding: 0 16px;
+        border-radius: 22px;
+        background: rgba(28, 28, 30, 0.92);
+        color: #fff;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(12px);
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: #8e8e93;
+      }
+      .label {
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* States */
+      .recording .dot {
+        background: #ff453a;
+        animation: pulse 1s ease-in-out infinite;
+      }
+      .transcribing .dot {
+        background: #0a84ff;
+        animation: pulse 0.8s ease-in-out infinite;
+      }
+      .done .dot {
+        background: #30d158;
+        animation: none;
+      }
+      .error .dot {
+        background: #ff9f0a;
+        animation: none;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.4;
+          transform: scale(0.7);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pill" id="pill">
+      <div class="dot"></div>
+      <div class="label" id="label">Ready</div>
+    </div>
+
+    <script>
+      const pill = document.getElementById('pill');
+      const label = document.getElementById('label');
+
+      const LABELS = {
+        recording: 'Listening…',
+        transcribing: 'Transcribing…',
+        done: 'Pasted ✓',
+        error: 'Error',
+      };
+
+      window.murmur.onState(({ state, text }) => {
+        pill.className = 'pill ' + state;
+        if (state === 'done' && text) {
+          const preview = text.length > 28 ? text.slice(0, 28) + '…' : text;
+          label.textContent = preview;
+        } else if (state === 'error' && text) {
+          label.textContent = text.length > 36 ? text.slice(0, 36) + '…' : text;
+        } else {
+          label.textContent = LABELS[state] || 'Ready';
+        }
+      });
+    </script>
+  </body>
+</html>

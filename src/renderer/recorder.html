@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Murmur recorder</title>
+  </head>
+  <body>
+    <!--
+      Hidden window. Owns the microphone. On start it captures Float32 audio at
+      the AudioContext's native rate; on stop it downsamples to 16kHz mono and
+      encodes a 16-bit PCM WAV — exactly what whisper.cpp requires — then ships
+      the bytes to the main process. No mic access happens outside this window.
+    -->
+    <script>
+      const TARGET_RATE = 16000; // whisper.cpp input requirement
+
+      let audioCtx = null;
+      let mediaStream = null;
+      let source = null;
+      let processor = null;
+      let chunks = []; // Float32Array slices at the native rate
+      let sourceRate = 48000;
+
+      async function startCapture() {
+        chunks = [];
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+        } catch (err) {
+          // Mic permission denied or unavailable — emit empty WAV so main resets.
+          window.murmur.sendWav(new ArrayBuffer(0));
+          return;
+        }
+
+        audioCtx = new AudioContext();
+        sourceRate = audioCtx.sampleRate;
+        source = audioCtx.createMediaStreamSource(mediaStream);
+
+        // ScriptProcessorNode is deprecated but dependency-free and reliable for
+        // this offline, fixed-pipeline use. AudioWorklet would add complexity for
+        // no real gain here.
+        processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (e) => {
+          const input = e.inputBuffer.getChannelData(0);
+          chunks.push(new Float32Array(input)); // copy — buffer is reused
+        };
+        source.connect(processor);
+        processor.connect(audioCtx.destination); // required to keep it pumping
+      }
+
+      async function stopCapture() {
+        if (!audioCtx) {
+          window.murmur.sendWav(new ArrayBuffer(0));
+          return;
+        }
+
+        // Tear down the graph and release the mic.
+        try { processor.disconnect(); } catch (_) {}
+        try { source.disconnect(); } catch (_) {}
+        if (mediaStream) mediaStream.getTracks().forEach((t) => t.stop());
+        await audioCtx.close();
+        audioCtx = null;
+
+        const merged = mergeChunks(chunks);
+        chunks = [];
+        const down = downsample(merged, sourceRate, TARGET_RATE);
+        const wav = encodeWav(down, TARGET_RATE);
+        window.murmur.sendWav(wav);
+      }
+
+      function mergeChunks(parts) {
+        let len = 0;
+        for (const p of parts) len += p.length;
+        const out = new Float32Array(len);
+        let off = 0;
+        for (const p of parts) {
+          out.set(p, off);
+          off += p.length;
+        }
+        return out;
+      }
+
+      // Linear-interpolation resampler. Native rate (44.1/48k) → 16k mono.
+      function downsample(buffer, fromRate, toRate) {
+        if (toRate >= fromRate) return buffer;
+        const ratio = fromRate / toRate;
+        const outLen = Math.floor(buffer.length / ratio);
+        const out = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const idx = i * ratio;
+          const lo = Math.floor(idx);
+          const hi = Math.min(lo + 1, buffer.length - 1);
+          const frac = idx - lo;
+          out[i] = buffer[lo] * (1 - frac) + buffer[hi] * frac;
+        }
+        return out;
+      }
+
+      // Float32 [-1,1] → 16-bit PCM WAV (mono).
+      function encodeWav(samples, rate) {
+        const bytesPerSample = 2;
+        const dataSize = samples.length * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        const writeStr = (off, s) => {
+          for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+        };
+
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true); // fmt chunk size
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // mono
+        view.setUint32(24, rate, true);
+        view.setUint32(28, rate * bytesPerSample, true); // byte rate
+        view.setUint16(32, bytesPerSample, true); // block align
+        view.setUint16(34, 16, true); // bits per sample
+        writeStr(36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        let off = 44;
+        for (let i = 0; i < samples.length; i++) {
+          let s = Math.max(-1, Math.min(1, samples[i]));
+          s = s < 0 ? s * 0x8000 : s * 0x7fff;
+          view.setInt16(off, s, true);
+          off += 2;
+        }
+        return buffer;
+      }
+
+      window.murmur.onStart(() => startCapture());
+      window.murmur.onStop(() => stopCapture());
+    </script>
+  </body>
+</html>
