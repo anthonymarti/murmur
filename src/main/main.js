@@ -246,12 +246,50 @@ function pasteIntoActiveApp() {
 // Tray
 // ---------------------------------------------------------------------------
 
+// Draw a microphone glyph as a raw RGBA bitmap rather than embedding an opaque
+// base64 PNG (which rendered invisible). As a macOS template image only the
+// alpha matters — the system inverts the ink for light/dark menu bars — so the
+// pixels are black with per-pixel alpha for anti-aliasing.
 function trayIcon() {
-  // A tiny template image so it adapts to light/dark menu bars. Drawn inline so
-  // the prototype needs no asset files.
-  const img = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAW0lEQVR4nO3UsQ0AIAhE0XP%2Fne0sLEgM8V8DyRUUBQAAAPCgJDlJ3rZ7kpVkJdkmuUmWJDfJ2navJFeSm%2BS2eyVZk5wkb9s9yUqykqxJ7iR32z3JSrIm%2Bdq9kjwAAAAAAAAAAAAAAAAA8L8DYwAGAUo1iQAAAABJRU5ErkJggg=='
-  );
+  const S = 36; // 36px buffer shown at 18pt via scaleFactor 2 (retina-crisp)
+  const buf = Buffer.alloc(S * S * 4); // zero-filled = fully transparent
+
+  // Coverage of a point by a thick line segment (a "stadium"/capsule shape).
+  const segCoverage = (px, py, ax, ay, bx, by, radius) => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy || 1;
+    let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    return Math.max(0, Math.min(1, radius + 0.5 - d));
+  };
+
+  // Coverage of a point by an arc ring (lower half only → the mic's U-stand).
+  const arcCoverage = (px, py, cx, cy, radius, thick) => {
+    if (py < cy) return 0;
+    const d = Math.abs(Math.hypot(px - cx, py - cy) - radius);
+    return Math.max(0, Math.min(1, thick + 0.5 - d));
+  };
+
+  const cx = S / 2;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      let a = 0;
+      a = Math.max(a, segCoverage(px, py, cx, 9, cx, 18, 4.5)); // mic body capsule
+      a = Math.max(a, arcCoverage(px, py, cx, 18.5, 8, 1.4)); //   stand arc (U)
+      a = Math.max(a, segCoverage(px, py, cx, 26.5, cx, 30, 1.2)); // stem
+      a = Math.max(a, segCoverage(px, py, cx - 5, 30.5, cx + 5, 30.5, 1.2)); // base
+      if (a > 0) {
+        const i = (y * S + x) * 4;
+        buf[i + 3] = Math.round(a * 255); // alpha only; RGB stay 0 (black ink)
+      }
+    }
+  }
+
+  const img = nativeImage.createFromBitmap(buf, { width: S, height: S, scaleFactor: 2 });
   img.setTemplateImage(true);
   return img;
 }
