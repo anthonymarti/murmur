@@ -152,9 +152,15 @@ function preflight() {
   return true;
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// TABLED FEATURE: streaming live-preview. Kept but isolated and INERT by
+// default (config.streaming === false). The growing-window approach hallucinates
+// on partial audio, so it's opt-in only. Everything streaming-related lives in
+// this single section plus the `startPartialLoop()/stopPartialLoop()` calls in
+// toggleDictation — do not wire new features through it. If revived, do it
+// properly with a persistent whisper-server + VAD. Safe to delete wholesale.
+// ===========================================================================
 // Streaming preview — periodically transcribe the audio-so-far while recording.
-// ---------------------------------------------------------------------------
 
 function startPartialLoop() {
   stopping = false;
