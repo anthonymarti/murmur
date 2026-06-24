@@ -12,6 +12,7 @@ const DEFAULTS = {
   hotkey: 'Control+Alt+Space', // Ctrl+Option+Space
   model: 'ggml-base.en.bin', // filename inside vendor/whisper.cpp/models
   dictionary: [], // [{ from, to }] spoken→written substitutions for names/jargon
+  streaming: true, // live preview while dictating (re-transcribes the growing buffer)
 };
 
 let cached = null;

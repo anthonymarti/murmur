@@ -42,6 +42,14 @@ let settingsWin = null; // visible settings window (created on demand)
 let isRecording = false;
 let busy = false; // true while transcribing/pasting — ignore hotkey re-entry
 
+// Streaming (live-preview) state. Partials re-transcribe the growing buffer on
+// a timer; they're preview-only — the final pass after stop is authoritative.
+const PARTIAL_MS = 1800; // how often to snapshot + transcribe while recording
+let partialTimer = null;
+let partialBusy = false; // a partial whisper run is in flight; skip this tick
+let partialProc = null; // the running partial child process (so we can kill it)
+let stopping = false; // stop requested; ignore late partials
+
 // ---------------------------------------------------------------------------
 // Windows
 // ---------------------------------------------------------------------------
@@ -62,7 +70,7 @@ function createRecorderWindow() {
 
 function createPanelWindow() {
   panelWin = new BrowserWindow({
-    width: 220,
+    width: 380,
     height: 72,
     show: false,
     frame: false,
@@ -122,10 +130,12 @@ function toggleDictation() {
     isRecording = true;
     showPanel('recording');
     recorderWin.webContents.send('recorder:start');
+    startPartialLoop();
     updateTrayTitle();
   } else {
     isRecording = false;
     busy = true;
+    stopPartialLoop(); // kill any in-flight preview before the final pass
     setPanelState('transcribing');
     recorderWin.webContents.send('recorder:stop');
     updateTrayTitle();
@@ -141,6 +151,70 @@ function preflight() {
   }
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming preview — periodically transcribe the audio-so-far while recording.
+// ---------------------------------------------------------------------------
+
+function startPartialLoop() {
+  stopping = false;
+  partialBusy = false;
+  if (!config.load().streaming) return; // live preview disabled in settings
+  partialTimer = setInterval(() => {
+    if (partialBusy || stopping || !recorderWin) return;
+    recorderWin.webContents.send('recorder:snapshot');
+  }, PARTIAL_MS);
+}
+
+function stopPartialLoop() {
+  stopping = true;
+  if (partialTimer) {
+    clearInterval(partialTimer);
+    partialTimer = null;
+  }
+  if (partialProc) {
+    try {
+      partialProc.kill();
+    } catch {
+      /* already gone */
+    }
+    partialProc = null;
+  }
+}
+
+// A preview snapshot of the growing buffer. Transcribe it and show it live in
+// the HUD. This is intentionally lightweight — no full cleanup, no paste.
+ipcMain.on('recorder:wav-partial', (_evt, arrayBuffer) => {
+  if (stopping) return;
+  const buf = Buffer.from(arrayBuffer);
+  if (buf.length < 4096) return; // too little audio to bother
+
+  partialBusy = true;
+  const wavPath = path.join(os.tmpdir(), `murmur-partial-${Date.now()}.wav`);
+  try {
+    fs.writeFileSync(wavPath, buf);
+  } catch {
+    partialBusy = false;
+    return;
+  }
+
+  partialProc = execFile(
+    WHISPER_CLI,
+    ['-m', modelPath(), '-f', wavPath, '-nt', '-np'],
+    { maxBuffer: 1024 * 1024 * 16 },
+    (err, stdout) => {
+      partialProc = null;
+      partialBusy = false;
+      fs.rm(wavPath, { force: true }, () => {});
+      if (err || stopping || !isRecording) return; // killed on stop, or done
+      const preview = (stdout || '')
+        .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (preview) setPanelState('recording', preview);
+    }
+  );
+});
 
 // Renderer hands us the finished 16kHz mono WAV as a Buffer.
 ipcMain.on('recorder:wav', async (_evt, arrayBuffer) => {
@@ -410,6 +484,7 @@ function snapshot() {
     model: s.model,
     models: listModels(),
     dictionary: s.dictionary || [],
+    streaming: s.streaming !== false,
     permissions: permissionStatus(),
   };
 }
@@ -433,6 +508,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   }
   if (patch.model) config.save({ model: patch.model });
   if (Array.isArray(patch.dictionary)) config.save({ dictionary: patch.dictionary });
+  if (typeof patch.streaming === 'boolean') config.save({ streaming: patch.streaming });
   tray.setContextMenu(buildTrayMenu()); // reflect new hotkey label
   return { ok: true, ...snapshot() };
 });

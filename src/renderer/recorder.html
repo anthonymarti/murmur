@@ -137,8 +137,22 @@
         return buffer;
       }
 
+      // Snapshot: encode everything captured so far WITHOUT stopping the mic,
+      // so main can transcribe a live preview while the user keeps speaking.
+      function snapshot() {
+        if (!audioCtx || chunks.length === 0) {
+          window.murmur.sendPartial(new ArrayBuffer(0));
+          return;
+        }
+        const merged = mergeChunks(chunks); // copy of the growing buffer
+        const down = downsample(merged, sourceRate, TARGET_RATE);
+        const wav = encodeWav(down, TARGET_RATE);
+        window.murmur.sendPartial(wav);
+      }
+
       window.murmur.onStart(() => startCapture());
       window.murmur.onStop(() => stopCapture());
+      window.murmur.onSnapshot(() => snapshot());
     </script>
   </body>
 </html>

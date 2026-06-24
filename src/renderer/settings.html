@@ -183,6 +183,43 @@
         font-style: italic;
         padding: 2px 0 4px;
       }
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 42px;
+        height: 25px;
+        flex: 0 0 auto;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .slider {
+        position: absolute;
+        inset: 0;
+        background: var(--line);
+        border-radius: 25px;
+        transition: background 0.15s;
+      }
+      .slider::before {
+        content: '';
+        position: absolute;
+        height: 21px;
+        width: 21px;
+        left: 2px;
+        top: 2px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.15s;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      }
+      .switch input:checked + .slider {
+        background: var(--ok);
+      }
+      .switch input:checked + .slider::before {
+        transform: translateX(17px);
+      }
     </style>
   </head>
   <body>
@@ -215,6 +252,23 @@
             <div class="hint">Larger models are more accurate but slower.</div>
           </div>
           <select id="modelSelect"></select>
+        </div>
+      </div>
+
+      <!-- Live preview -->
+      <div class="card">
+        <h2>Live preview</h2>
+        <div class="row" style="padding-top: 0">
+          <div>
+            <div class="label">Show text while dictating</div>
+            <div class="hint">
+              Transcribes as you speak. Uses more CPU; the final paste is unaffected.
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="streamingToggle" />
+            <span class="slider"></span>
+          </label>
         </div>
       </div>
 
@@ -376,8 +430,14 @@
         if (e.key === 'Enter') $('dictAdd').click();
       });
 
+      // --- live preview toggle ---
+      $('streamingToggle').addEventListener('change', async (e) => {
+        render(await api.set({ streaming: e.target.checked }));
+      });
+
       function render(state) {
         $('hotkeyDisplay').textContent = pretty(state.hotkey);
+        $('streamingToggle').checked = state.streaming !== false;
         dictionary = state.dictionary || [];
         renderDictionary();
         const sel = $('modelSelect');

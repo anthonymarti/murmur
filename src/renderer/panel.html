@@ -91,11 +91,14 @@
 
       window.murmur.onState(({ state, text }) => {
         pill.className = 'pill ' + state;
-        if (state === 'done' && text) {
-          const preview = text.length > 28 ? text.slice(0, 28) + '…' : text;
+        if (state === 'recording' && text) {
+          // Live preview: show the most recent words (tail) as they're recognized.
+          label.textContent = text.length > 46 ? '…' + text.slice(-46) : text;
+        } else if (state === 'done' && text) {
+          const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
           label.textContent = preview;
         } else if (state === 'error' && text) {
-          label.textContent = text.length > 36 ? text.slice(0, 36) + '…' : text;
+          label.textContent = text.length > 44 ? text.slice(0, 44) + '…' : text;
         } else {
           label.textContent = LABELS[state] || 'Ready';
         }

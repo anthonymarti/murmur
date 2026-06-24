@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('murmur', {
   onStop: (cb) => ipcRenderer.on('recorder:stop', () => cb()),
   // Hand the finished WAV (ArrayBuffer) back to main for transcription.
   sendWav: (arrayBuffer) => ipcRenderer.send('recorder:wav', arrayBuffer),
+  // Live-preview snapshots: main asks, renderer encodes audio-so-far.
+  onSnapshot: (cb) => ipcRenderer.on('recorder:snapshot', () => cb()),
+  sendPartial: (arrayBuffer) => ipcRenderer.send('recorder:wav-partial', arrayBuffer),
 
   // --- panel.html ---
   onState: (cb) => ipcRenderer.on('panel:state', (_e, payload) => cb(payload)),
